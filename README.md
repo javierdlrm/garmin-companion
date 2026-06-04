@@ -47,7 +47,7 @@ Three models cooperate behind a single recommendation:
 
 ```mermaid
 flowchart LR
-  G["⌚ Garmin Connect"] -->|python-garminconnect<br/>(swappable)| ING["Ingestion<br/>normalize · raw snapshots"]
+  G["⌚ Garmin Connect"] -->|"python-garminconnect · swappable"| ING["Ingestion<br/>normalize · raw snapshots"]
 
   subgraph HW["🟩 Hopsworks"]
     direction TB
@@ -56,12 +56,12 @@ flowchart LR
       DER["derived<br/>baselines · EWMA load<br/>stress state · recovery episodes"]
     end
     FV["3 Feature Views<br/>+ transformation functions"]
-    M["3 Models → 1 bundle<br/>(model registry)"]
+    M["3 Models → 1 bundle<br/>model registry"]
     DEP["🚀 Combined KServe deployment"]
     LOG["prediction logging<br/>+ feature monitoring + alerts"]
     FG --> FV --> M --> DEP
     DEP --> LOG
-    LOG -.retrain.-> FV
+    LOG -.->|retrain| FV
   end
 
   ING --> FG
@@ -78,7 +78,7 @@ The whole system runs on Hopsworks primitives — **no bespoke validation, monit
 ```mermaid
 flowchart TB
   subgraph F["1 · Feature pipeline"]
-    F1["Ingest Garmin data<br/>(DEMO_MODE or live)"] --> F2["Validate<br/>(Great Expectations)"] --> F3["Raw + derived<br/>feature groups"]
+    F1["Ingest Garmin data<br/>DEMO_MODE or live"] --> F2["Validate<br/>Great Expectations"] --> F3["Raw + derived<br/>feature groups"]
   end
   subgraph T["2 · Training pipeline"]
     T1["3 feature views<br/>+ model-dependent transforms"] --> T2["weak labels + manual feedback<br/>point-in-time recovery episodes"] --> T3["train 3 models<br/>→ register 1 bundle"]
@@ -109,11 +109,11 @@ The three models never contradict each other — a product-level **max-risk** la
 
 ```mermaid
 flowchart TD
-  R["Readiness<br/>green / yellow / red"] --> C{max-risk}
+  R["Readiness<br/>green / yellow / red"] --> C{"max-risk"}
   S["Stress anomaly<br/>normal / moderate / high"] --> C
-  V["Recovery hours<br/>remaining"] --> C
-  C -->|"any red signal<br/>(readiness red · stress high<br/>· recovery > 24h · pain)"| RED["🔴 Rest / recover"]
-  C -->|"any yellow signal<br/>(readiness yellow · stress moderate<br/>· recovery 8–24h)"| YEL["🟡 Easy / technical"]
+  V["Recovery hours remaining"] --> C
+  C -->|"red: readiness red · stress high · recovery over 24h · pain"| RED["🔴 Rest / recover"]
+  C -->|"yellow: readiness yellow · stress moderate · recovery 8–24h"| YEL["🟡 Easy / technical"]
   C -->|"all clear"| GRN["🟢 Train hard OK"]
 ```
 
