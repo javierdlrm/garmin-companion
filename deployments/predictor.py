@@ -42,8 +42,14 @@ class Predict(object):
         # Readiness FV via provenance of the registered combined model.
         self.hopsworks_model = model or self.mr.get_model("garmin_combined", version=1)
         self.readiness_fv = self.hopsworks_model.get_feature_view()
+        # Best-effort feature logging. Prediction logging is disabled on this cluster
+        # (the Metastore cannot create logging feature groups), so guard init_serving
+        # so a missing logging setup can never block pod startup.
         if async_logger is not None:
-            self.readiness_fv.init_serving(feature_logger=async_logger)
+            try:
+                self.readiness_fv.init_serving(feature_logger=async_logger)
+            except Exception as exc:  # pragma: no cover - logging must never break serving
+                print(f"feature-logger init skipped: {exc}")
 
         # Stress + recovery feature views by name (different entities/keys).
         self.stress_fv = self.fs.get_feature_view("fv_stress_anomaly_realtime", 1)
