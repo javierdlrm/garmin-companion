@@ -50,10 +50,18 @@ def build_baselines(daily_features: pd.DataFrame) -> pd.DataFrame:
         ("respiration_28d_mean", "respiration_avg", 28, "mean"),
         ("spo2_28d_mean", "spo2_avg", 28, "mean"),
     ]
+    # Per-user trailing rolling stat, shifted to exclude the current day (as-of).
+    # Use groupby(...).transform so the result is index-aligned to ``df`` (a Series of
+    # the same length) — pandas 2.x's groupby.apply unstacks a returned Series into a
+    # wide frame, which previously broke the ``.values`` assignment.
     grouped = df.groupby("user_id", group_keys=False)
     for out_col, src_col, window, how in specs:
         if src_col in df:
-            out[out_col] = grouped.apply(lambda g, c=src_col, w=window, h=how: _rolling_asof(g, c, w, how=h)).values
+            out[out_col] = grouped[src_col].transform(
+                lambda s, w=window, h=how: getattr(
+                    s.rolling(window=w, min_periods=max(2, w // 4)), h
+                )().shift(1)
+            )
 
     out["date"] = pd.to_datetime(out["date"]).dt.date
     out["event_time"] = pd.to_datetime(out["date"]) + pd.Timedelta(hours=8)  # morning, when used
