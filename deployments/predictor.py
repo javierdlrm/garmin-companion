@@ -25,6 +25,7 @@ import os
 
 import joblib
 import numpy as np
+import pandas as pd
 
 import hopsworks
 
@@ -71,12 +72,29 @@ class Predict(object):
             return first
         return {"user_id": first[0] if isinstance(first, (list, tuple)) else first}
 
+    @staticmethod
+    def _vec(x):
+        """Feature vector -> float (1, n) with NaN/None/NA -> 0.0.
+
+        The models were trained on ``fillna(0)`` (this account has no HRV and the 28-day
+        baselines are NaN during warm-up), so serving must fill the same way — otherwise
+        sklearn raises on NaN and the request silently falls back to a default class.
+        """
+        flat = np.asarray(x, dtype=object).ravel()
+        out = np.array([0.0 if pd.isna(v) else float(v) for v in flat], dtype=float)
+        return out.reshape(1, -1)
+
     def _readiness(self, user_id, date):
         entry = {"user_id": user_id, "date": date}
         untransformed = self.readiness_fv.get_feature_vector(entry, transform=False)
-        transformed = self.readiness_fv.transform(untransformed)
-        proba = float(self.readiness_model.predict_proba(np.asarray(transformed).reshape(1, -1))[0].max())
-        cls = str(self.readiness_model.predict(np.asarray(transformed).reshape(1, -1))[0])
+        # A single online vector with None values (this account has no HRV) is
+        # object-dtype, and the pandas delta UDFs raise on None - None and return an
+        # empty result. Training filled NaN->0, so fill None->0 here before transform.
+        safe = [0.0 if v is None else v for v in untransformed]
+        transformed = self.readiness_fv.transform(safe)
+        vec = self._vec(transformed)
+        proba = float(self.readiness_model.predict_proba(vec)[0].max())
+        cls = str(self.readiness_model.predict(vec)[0])
         # Best-effort prediction logging (won't fail the request).
         try:
             self.readiness_fv.log(
@@ -93,7 +111,7 @@ class Predict(object):
         fv_in = self.stress_fv.get_feature_vector(
             {"user_id": user_id}, request_parameters=request_parameters or None
         )
-        score = float(self.stress_model.decision_function(np.asarray(fv_in).reshape(1, -1))[0])
+        score = float(self.stress_model.decision_function(self._vec(fv_in))[0])
         # IsolationForest: lower score = more anomalous. Map to [0,1] anomaly score.
         anomaly = float(1.0 / (1.0 + np.exp(score)))
         level = "high" if anomaly > 0.75 else "moderate" if anomaly > 0.5 else "normal"
@@ -103,7 +121,7 @@ class Predict(object):
         if activity_id in (None, "latest"):
             return None  # no active episode
         fv_in = self.recovery_fv.get_feature_vector({"user_id": user_id, "activity_id": activity_id})
-        hours = float(self.recovery_model.predict(np.asarray(fv_in).reshape(1, -1))[0])
+        hours = float(self.recovery_model.predict(self._vec(fv_in))[0])
         return max(0.0, hours)
 
     @staticmethod

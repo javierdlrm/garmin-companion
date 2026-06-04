@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -25,6 +26,27 @@ def _date_range(start_date: dt.date, end_date: dt.date):
     while day <= end_date:
         yield day
         day += dt.timedelta(days=1)
+
+
+def _retry(fn, *args, tries: int = 5, base_delay: float = 2.0, **kwargs):
+    """Call ``fn`` with exponential backoff on transient (429 / 5xx / timeout) errors.
+
+    Garmin rate-limits aggressively; a multi-month backfill makes hundreds of calls,
+    so a transient retry keeps the pipeline from dying on a single throttled request.
+    """
+    last = None
+    for i in range(tries):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:  # garminconnect surfaces various transient errors
+            last = exc
+            msg = str(exc).lower()
+            transient = any(s in msg for s in ("429", "too many", "rate", "timeout", "502", "503", "504"))
+            if transient and i < tries - 1:
+                time.sleep(base_delay * (2 ** i))
+                continue
+            raise
+    raise last  # pragma: no cover
 
 
 class GarminSource(ABC):
@@ -64,6 +86,20 @@ class GarminSource(ABC):
             json.dump(snapshots, fh, indent=2, default=str)
         return path
 
+    def _maybe_cached(self, kind: str):
+        """Return previously-persisted raw snapshots when ``GARMIN_RAW_REUSE=1``.
+
+        Raw snapshots are stored precisely so reprocessing can be decoupled from the
+        live API (draft §3.3). This opt-in flag lets a feature-engineering re-run skip
+        the (rate-limited) Garmin round-trip and reuse the last pull verbatim.
+        """
+        if os.environ.get("GARMIN_RAW_REUSE") == "1":
+            path = os.path.join(self.raw_dir, f"{kind}.json")
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as fh:
+                    return json.load(fh)
+        return None
+
 
 class GarminConnectSource(GarminSource):
     """Recommended path — wraps the unofficial ``python-garminconnect`` client.
@@ -102,18 +138,31 @@ class GarminConnectSource(GarminSource):
                     "Garmin credentials missing. Set GARMIN_EMAIL / GARMIN_PASSWORD "
                     "(or pass them to GarminConnectSource), or use DEMO_MODE=True."
                 )
+            tokenstore = os.environ.get("GARMINTOKENS", os.path.expanduser("~/.garminconnect"))
             api = Garmin(self._email, self._password)
-            api.login()
+            try:
+                # Reuse a cached OAuth session if present. A fresh login is what Garmin
+                # rate-limits (HTTP 429) under repeated runs; the token lasts ~1 year.
+                api.login(tokenstore)
+            except Exception:
+                api.login()
+                try:
+                    api.garth.dump(tokenstore)
+                except Exception:
+                    pass
             self._api = api
         return self._api
 
     def fetch_daily_summaries(self, start_date, end_date):
+        cached = self._maybe_cached("daily_summary")
+        if cached is not None:
+            return cached
         api = self._client()
         out = []
         for day in _date_range(start_date, end_date):
             iso = day.isoformat()
-            stats = api.get_stats(iso) or {}
-            bb = api.get_body_battery(iso, iso) or [{}]
+            stats = _retry(api.get_stats, iso) or {}
+            bb = _retry(api.get_body_battery, iso, iso) or [{}]
             bb0 = bb[0] if isinstance(bb, list) and bb else {}
             out.append(self._canon_daily(iso, stats, bb0))
         return self._persist_and_return("daily_summary", out)
@@ -146,14 +195,17 @@ class GarminConnectSource(GarminSource):
         }
 
     def fetch_sleep(self, start_date, end_date):
+        cached = self._maybe_cached("sleep")
+        if cached is not None:
+            return cached
         api = self._client()
         out = []
         for day in _date_range(start_date, end_date):
             iso = day.isoformat()
-            sleep = api.get_sleep_data(iso) or {}
+            sleep = _retry(api.get_sleep_data, iso) or {}
             # HRV is captured overnight; not all devices/days have it (MNAR — T4).
             try:
-                hrv = api.get_hrv_data(iso)
+                hrv = _retry(api.get_hrv_data, iso)
             except Exception:  # pragma: no cover - device/route dependent
                 hrv = None
             out.append(self._canon_sleep(iso, sleep, hrv))
@@ -185,13 +237,44 @@ class GarminConnectSource(GarminSource):
         }
 
     def fetch_activities(self, start_date, end_date):
+        cached = self._maybe_cached("activity")
+        if cached is not None:
+            return cached
         api = self._client()
-        acts = api.get_activities_by_date(start_date.isoformat(), end_date.isoformat()) or []
-        return self._persist_and_return("activity", [self._canon_activity(a) for a in acts])
+        acts = _retry(api.get_activities_by_date, start_date.isoformat(), end_date.isoformat()) or []
+        out = []
+        for a in acts:
+            zones = self._fetch_zone_minutes(api, a.get("activityId"))
+            out.append(self._canon_activity(a, zones))
+        return self._persist_and_return("activity", out)
 
     @staticmethod
-    def _canon_activity(a):
+    def _fetch_zone_minutes(api, activity_id):
+        """Minutes in each HR zone via the HR-in-timezones endpoint.
+
+        The activity *summary* from ``get_activities_by_date`` omits the zone
+        breakdown, so per-activity load would be identically zero without this.
+        Best-effort: returns all-``None`` (→ treated as 0 by ``features.activity``)
+        if the device/activity has no zone data or the call fails.
+        """
         zones = {f"time_in_zone_{i}_min": None for i in range(1, 6)}
+        if activity_id is None:
+            return zones
+        try:
+            data = _retry(api.get_activity_hr_in_timezones, activity_id) or []
+        except Exception:  # pragma: no cover - device/route dependent
+            return zones
+        for z in data or []:
+            zn = z.get("zoneNumber")
+            secs = z.get("secsInZone")
+            if zn in (1, 2, 3, 4, 5) and secs is not None:
+                zones[f"time_in_zone_{zn}_min"] = round(secs / 60.0, 2)
+        return zones
+
+    @staticmethod
+    def _canon_activity(a, zones=None):
+        if zones is None:
+            zones = {f"time_in_zone_{i}_min": None for i in range(1, 6)}
         dur_min = (a.get("duration") or 0) / 60.0
         start = a.get("startTimeGMT")
         return {
@@ -214,14 +297,21 @@ class GarminConnectSource(GarminSource):
         }
 
     def fetch_epochs(self, start_date, end_date):
+        cached = self._maybe_cached("epoch")
+        if cached is not None:
+            return cached
         api = self._client()
         out = []
         for day in _date_range(start_date, end_date):
             iso = day.isoformat()
             # Intraday HR / stress samples — flattened to one canonical record per
             # sample. The real API returns dense arrays; we down-sample in practice.
-            stress = api.get_stress_data(iso) or {}
+            stress = _retry(api.get_stress_data, iso) or {}
             for ts, level in (stress.get("stressValuesArray") or []):
+                # Garmin uses -1 (no reading) / -2 (off-wrist or too much motion) as
+                # sentinels; they are not real stress and would poison the baselines.
+                if level is None or level < 0:
+                    continue
                 out.append(
                     {
                         "epoch_start_time": ts,

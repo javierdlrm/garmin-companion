@@ -52,15 +52,22 @@ def _baseline_lookup(baselines: pd.DataFrame) -> dict:
     return out
 
 
+def _has(v) -> bool:
+    """A signal is usable only if it is present AND not NaN (a NaN baseline/morning
+    value would otherwise sneak past an ``is not None`` test and make every
+    comparison False — censoring every episode)."""
+    return v is not None and pd.notna(v)
+
+
 def _recovered(morning: dict, base: dict) -> bool:
     checks = []
-    if base.get("hrv") is not None and morning.get("hrv_avg_sleep") is not None:
+    if _has(base.get("hrv")) and _has(morning.get("hrv_avg_sleep")):
         checks.append(morning["hrv_avg_sleep"] >= HRV_RECOVERED_FRAC * base["hrv"])
-    if base.get("rhr") is not None and morning.get("resting_hr") is not None:
+    if _has(base.get("rhr")) and _has(morning.get("resting_hr")):
         checks.append(morning["resting_hr"] <= base["rhr"] + RHR_RECOVERED_DELTA)
-    if morning.get("sleep_score") is not None:
+    if _has(morning.get("sleep_score")):
         checks.append(morning["sleep_score"] >= SLEEP_SCORE_FLOOR)
-    if base.get("bb") is not None and morning.get("body_battery_morning") is not None:
+    if _has(base.get("bb")) and _has(morning.get("body_battery_morning")):
         checks.append(morning["body_battery_morning"] >= base["bb"] - BB_RECOVERED_DELTA)
     # Require at least one comparable signal and all available checks to pass.
     return len(checks) > 0 and all(checks)

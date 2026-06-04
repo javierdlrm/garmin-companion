@@ -21,8 +21,13 @@ RAW_COLUMNS = [
 def add_derived(daily_df: pd.DataFrame) -> pd.DataFrame:
     """Add cheap same-row derivations (no cross-row leakage)."""
     df = daily_df.copy()
+    # body_battery_start is unreliable on the live Garmin path (the unofficial API
+    # exposes no clean start-of-day value), so fall back to the day's high — Body
+    # Battery peaks in the morning after the overnight recharge, making it a good
+    # morning proxy. Demo data carries body_battery_start, so it is preferred there.
+    morning = df["body_battery_start"].where(df["body_battery_start"].notna(), df["body_battery_high"])
     # Overnight recharge: how much Body Battery climbed from the day's low to morning.
-    df["body_battery_recharge"] = (df["body_battery_start"] - df["body_battery_low"]).clip(lower=0)
+    df["body_battery_recharge"] = (morning - df["body_battery_low"]).clip(lower=0)
     # Morning Body Battery proxy used by the readiness view.
-    df["body_battery_morning"] = df["body_battery_start"]
+    df["body_battery_morning"] = morning
     return df

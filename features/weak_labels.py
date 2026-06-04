@@ -67,8 +67,14 @@ def readiness_weak_label(row: pd.Series) -> str:
     if red:
         return "red"
 
+    # HRV is non-blocking for green when the device records none (this account has no
+    # HRV). Missing HRV simply doesn't count against readiness — mirroring how the red
+    # rule above already ignores absent signals. The remaining gates still apply.
+    hrv_val = row.get("hrv_delta_28d_pct")
+    hrv_ok = (hrv_val is None) or pd.isna(hrv_val) or ge(hrv_val, -5)
+
     green = (
-        ge(row.get("hrv_delta_28d_pct"), -5)
+        hrv_ok
         and le(row.get("rhr_delta_28d"), 3)
         and ge(row.get("sleep_score"), 75)
         and ge(row.get("body_battery_morning"), 65)
