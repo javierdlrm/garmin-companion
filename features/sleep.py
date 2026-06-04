@@ -7,6 +7,7 @@ HRV here; downstream models receive both the (possibly NaN) value and the indica
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 #: Columns of the ``fg_garmin_sleep_raw`` feature group (draft §8.1.2) + hrv_missing.
@@ -27,6 +28,9 @@ def add_derived(sleep_df: pd.DataFrame) -> pd.DataFrame:
     """Add same-row sleep derivations."""
     df = sleep_df.copy()
     df["sleep_debt_min"] = (TARGET_SLEEP_MIN - df["sleep_duration_min"]).clip(lower=0)
-    total = df[["deep_sleep_min", "rem_sleep_min", "light_sleep_min"]].sum(axis=1).replace(0, pd.NA)
+    # np.nan (not pd.NA) keeps the column float64; a night with zero recorded sleep
+    # stages (real data, never demo) would otherwise make this object-dtype and the
+    # downstream astype(float) raises on pd.NA.
+    total = df[["deep_sleep_min", "rem_sleep_min", "light_sleep_min"]].sum(axis=1).replace(0, np.nan)
     df["deep_sleep_pct"] = (df["deep_sleep_min"] / total * 100).astype(float)
     return df

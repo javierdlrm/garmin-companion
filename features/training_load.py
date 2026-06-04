@@ -17,6 +17,7 @@ Note the warm-up caveat: the first ~28 days have an unstable chronic estimate; t
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 # EWMA spans (days). span = 2/alpha - 1; span 7 -> alpha .25, span 28 -> alpha .069.
@@ -50,10 +51,10 @@ def build_training_load(daily_load_full: pd.DataFrame) -> pd.DataFrame:
         ewma_chronic = load.ewm(span=CHRONIC_SPAN, min_periods=CHRONIC_SPAN).mean()
         out["ewma_acute_load"] = ewma_acute.shift(1)
         out["ewma_chronic_load"] = ewma_chronic.shift(1)
-        out["ewma_acwr"] = (ewma_acute / ewma_chronic.replace(0, pd.NA)).shift(1)
+        out["ewma_acwr"] = (ewma_acute / ewma_chronic.replace(0, np.nan)).shift(1)
         # Didactic only — the coupled rolling-sum ratio (see module docstring).
         out["acwr_rollingsum_naive"] = (
-            out["load_7d_sum"] / (out["load_28d_sum"] / 4).replace(0, pd.NA)
+            out["load_7d_sum"] / (out["load_28d_sum"] / 4).replace(0, np.nan)
         )
 
         out["hard_sessions_7d"] = grp["is_hard"].rolling(7, min_periods=1).sum().shift(1)
@@ -62,7 +63,7 @@ def build_training_load(daily_load_full: pd.DataFrame) -> pd.DataFrame:
 
         # Monotony = mean/std of daily load over 7d; strain = 7d load * monotony.
         roll7 = load.rolling(7, min_periods=3)
-        monotony = (roll7.mean() / roll7.std().replace(0, pd.NA)).shift(1)
+        monotony = (roll7.mean() / roll7.std().replace(0, np.nan)).shift(1)
         out["training_monotony_7d"] = monotony
         out["training_strain_7d"] = out["load_7d_sum"] * monotony
 
