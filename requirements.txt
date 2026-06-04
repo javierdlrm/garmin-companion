@@ -1,0 +1,6 @@
+hopsworks[python,great_expectations]
+garminconnect
+pandas
+numpy
+scikit-learn
+streamlit

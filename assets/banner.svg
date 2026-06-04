@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" width="1280" height="360" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06281d"/>
+      <stop offset="0.55" stop-color="#0f6f50"/>
+      <stop offset="1" stop-color="#1EB182"/>
+    </linearGradient>
+    <linearGradient id="ecg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9bf3d4" stop-opacity="0.2"/>
+      <stop offset="0.5" stop-color="#defff4"/>
+      <stop offset="1" stop-color="#9bf3d4" stop-opacity="0.2"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-60%" width="140%" height="220%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1280" height="360" rx="18" fill="url(#bg)"/>
+  <circle cx="1040" cy="170" r="320" fill="url(#halo)"/>
+
+  <!-- faint dotted grid -->
+  <g fill="#ffffff" opacity="0.06">
+    <g id="row"><circle cx="40" cy="40" r="2"/></g>
+  </g>
+  <g fill="#ffffff" opacity="0.05">
+    <rect x="0" y="300" width="1280" height="1"/>
+    <rect x="0" y="60" width="1280" height="1"/>
+  </g>
+
+  <!-- heartbeat / ECG line -->
+  <polyline filter="url(#glow)" fill="none" stroke="url(#ecg)" stroke-width="3.5"
+    stroke-linejoin="round" stroke-linecap="round"
+    points="40,250 220,250 250,250 270,200 300,300 330,120 360,330 390,250 470,250 520,250 545,210 575,290 610,250 760,250 790,250 815,165 845,318 875,250 1240,250"/>
+
+  <!-- title block -->
+  <text x="60" y="150" font-size="68" font-weight="800" fill="#ffffff" letter-spacing="-1">Garmin Companion</text>
+  <text x="62" y="196" font-size="25" font-weight="500" fill="#d8fff1">Real-time Training Readiness · Stress Anomaly · Recovery</text>
+  <text x="62" y="228" font-size="19" font-weight="500" fill="#9bf3d4" opacity="0.95">An end-to-end ML system on the Hopsworks Feature Store</text>
+
+  <!-- status pills -->
+  <g font-size="17" font-weight="700">
+    <g transform="translate(62,262)">
+      <rect width="150" height="40" rx="20" fill="#0a3f2e" stroke="#2ee6a6" stroke-opacity="0.5"/>
+      <circle cx="26" cy="20" r="8" fill="#2ee6a6"/>
+      <text x="44" y="26" fill="#eafff7">Readiness</text>
+    </g>
+    <g transform="translate(224,262)">
+      <rect width="150" height="40" rx="20" fill="#0a3f2e" stroke="#ffd166" stroke-opacity="0.6"/>
+      <circle cx="26" cy="20" r="8" fill="#ffd166"/>
+      <text x="44" y="26" fill="#eafff7">Stress</text>
+    </g>
+    <g transform="translate(386,262)">
+      <rect width="170" height="40" rx="20" fill="#0a3f2e" stroke="#7ad8ff" stroke-opacity="0.6"/>
+      <circle cx="26" cy="20" r="8" fill="#7ad8ff"/>
+      <text x="44" y="26" fill="#eafff7">Recovery</text>
+    </g>
+  </g>
+
+  <!-- status rings (green/yellow/red readiness dial) -->
+  <g transform="translate(1010,180)" fill="none" stroke-width="16" stroke-linecap="round">
+    <circle r="120" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+    <circle r="96" stroke="#0a3f2e" stroke-opacity="0.5"/>
+    <!-- arc segments -->
+    <path d="M -68 -68 A 96 96 0 0 1 96 0" stroke="#2ee6a6"/>
+    <path d="M 96 0 A 96 96 0 0 1 20 94" stroke="#ffd166"/>
+    <path d="M 20 94 A 96 96 0 0 1 -68 -68" stroke="#ff6b6b" stroke-opacity="0.85"/>
+    <text x="0" y="-6" text-anchor="middle" font-size="46" font-weight="800" fill="#ffffff" stroke="none">73</text>
+    <text x="0" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#9bf3d4" stroke="none">readiness</text>
+  </g>
+</svg>

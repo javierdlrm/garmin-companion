@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# Local data & model artifacts
+data/
+garmin_models/
+*.pkl
+
+# Hopsworks / secrets
+.hw_api_key
+*.crt
+*.pem
+.env
